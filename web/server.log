@@ -1,0 +1,5 @@
+Serving...
+127.0.0.1 - - [24/Aug/2025 17:35:38] "GET /index.html HTTP/1.1" 200 -
+127.0.0.1 - - [24/Aug/2025 17:35:38] "GET /style.css HTTP/1.1" 200 -
+127.0.0.1 - - [24/Aug/2025 17:35:38] "GET /app.js HTTP/1.1" 200 -
+127.0.0.1 - - [24/Aug/2025 17:35:50] "GET /mwakazi_net_bst1.csv HTTP/1.1" 200 -

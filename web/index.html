@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WISP Mapping | Draw.io Exporter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <div class="brand">
+      <span class="material-symbols-outlined">satellite_alt</span>
+      <h1>WISP Mapping</h1>
+      <span class="subtitle">Mapping module</span>
+    </div>
+    <nav class="actions">
+      <button id="btn-export" class="btn primary">
+        <span class="material-symbols-outlined">download</span>
+        Export .drawio
+      </button>
+      <a id="btn-help" class="icon" href="https://www.diagrams.net/" target="_blank" rel="noreferrer">
+        <span class="material-symbols-outlined">help</span>
+      </a>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card">
+        <h2>
+          <span class="material-symbols-outlined">upload_file</span>
+          Import Data (HTML, CSV, XML)
+        </h2>
+        <div class="upload">
+          <input id="file" type="file" accept=".csv,.xml,.html,.htm,text/csv,application/xml,text/xml,text/html" />
+          <div class="hint">Drop a file here or click to browse</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Parsing Options</h3>
+        <label class="field">
+          <span>CSV: SSID column name</span>
+          <input id="opt-ssid-col" type="text" value="SSID" />
+        </label>
+        <label class="field">
+          <span>CSV: Mode column name</span>
+          <input id="opt-mode-col" type="text" value="Mode" />
+        </label>
+        <label class="field">
+          <span>CSV: Device Name column name</span>
+          <input id="opt-name-col" type="text" value="Device Name" />
+        </label>
+      </section>
+
+      <section class="card">
+        <h3>Layout</h3>
+        <label class="field">
+          <span>Orientation</span>
+          <select id="opt-orient">
+            <option value="LR">Left to Right</option>
+            <option value="TB">Top to Bottom</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Group by</span>
+          <select id="opt-group">
+            <option value="ssid">SSID</option>
+            <option value="mode">Mode</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="card">
+        <h3>Sample</h3>
+        <button id="btn-load-sample" class="btn">
+          <span class="material-symbols-outlined">folder_open</span>
+          Load sample CSV
+        </button>
+      </section>
+    </aside>
+
+    <section class="content">
+      <div class="toolbar card">
+        <div class="chip" id="status">No file loaded</div>
+        <div class="spacer"></div>
+        <button id="btn-clear" class="icon">
+          <span class="material-symbols-outlined">delete</span>
+        </button>
+      </div>
+
+      <div class="canvas card">
+        <svg id="preview" viewBox="0 0 1600 900"></svg>
+      </div>
+
+      <section class="card" id="details">
+        <h3>Parsed Info</h3>
+        <pre id="info"></pre>
+      </section>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
