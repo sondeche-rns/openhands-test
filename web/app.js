@@ -7,6 +7,60 @@ const statusChip = el('#status')
 const infoPre = el('#info')
 const svg = el('#preview')
 
+// Zoom & Pan state using SVG viewBox
+let baseViewBox = {x:0,y:0,w:1600,h:900}
+let viewBox = {...baseViewBox}
+function applyViewBox(){
+  svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`)
+}
+function resetZoom(){ viewBox = {...baseViewBox}; applyViewBox() }
+function zoomAt(clientX, clientY, factor){
+  const rect = svg.getBoundingClientRect()
+  const px = clientX - rect.left
+  const py = clientY - rect.top
+  const sx = viewBox.w / rect.width
+  const sy = viewBox.h / rect.height
+  const vx = viewBox.x + px * sx
+  const vy = viewBox.y + py * sy
+  viewBox.w *= factor
+  viewBox.h *= factor
+  viewBox.x = vx - px * (viewBox.w / rect.width)
+  viewBox.y = vy - py * (viewBox.h / rect.height)
+  applyViewBox()
+}
+function zoomBy(factor){
+  const rect = svg.getBoundingClientRect()
+  zoomAt(rect.left + rect.width/2, rect.top + rect.height/2, factor)
+}
+let isPanning=false, panStartX=0, panStartY=0, vbStartX=0, vbStartY=0
+svg.addEventListener('mousedown', (e)=>{
+  if(e.button!==0) return
+  isPanning=true
+  panStartX=e.clientX; panStartY=e.clientY
+  vbStartX=viewBox.x; vbStartY=viewBox.y
+})
+window.addEventListener('mousemove', (e)=>{
+  if(!isPanning) return
+  const rect = svg.getBoundingClientRect()
+  const dx = e.clientX - panStartX
+  const dy = e.clientY - panStartY
+  const sx = viewBox.w / rect.width
+  const sy = viewBox.h / rect.height
+  viewBox.x = vbStartX - dx * sx
+  viewBox.y = vbStartY - dy * sy
+  applyViewBox()
+})
+window.addEventListener('mouseup', ()=>{ isPanning=false })
+svg.addEventListener('wheel', (e)=>{
+  e.preventDefault()
+  const factor = e.deltaY>0 ? 1.1 : 0.9
+  zoomAt(e.clientX, e.clientY, factor)
+}, {passive:false})
+el('#zoom-in')?.addEventListener('click', ()=> zoomBy(0.9))
+el('#zoom-out')?.addEventListener('click', ()=> zoomBy(1.1))
+el('#zoom-reset')?.addEventListener('click', ()=> resetZoom())
+
+
 const opt = {
   ssidCol: el('#opt-ssid-col'),
   modeCol: el('#opt-mode-col'),
@@ -225,7 +279,11 @@ function renderSVG(layout){
     maxY = Math.max(maxY, n.y+n.h)
   }
 
-  svg.setAttribute('viewBox', `0 0 ${Math.max(1600,maxX+pad)} ${Math.max(900,maxY+pad)}`)
+  const vw = Math.max(1600,maxX+pad)
+  const vh = Math.max(900,maxY+pad)
+  baseViewBox = {x:0,y:0,w:vw,h:vh}
+  viewBox = {...baseViewBox}
+  applyViewBox()
 }
 
 // Draw.io export: build minimal mxGraphModel
