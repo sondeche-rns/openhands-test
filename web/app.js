@@ -210,7 +210,7 @@ function groupBy(data, key){
 }
 
 function computeLayout(records){
-  // Nodes: AP vs STA by Mode column; group by SSID buckets
+  // Center AP(s) and distribute STAs radially in each SSID group
   const modeKey = opt.modeCol.value || 'Mode'
   const nameKey = opt.nameCol.value || 'Device Name'
   const ssidKey = opt.ssidCol.value || 'SSID'
@@ -221,77 +221,92 @@ function computeLayout(records){
   const nodes = []
   const edges = []
   let gx = 40, gy = 40
-  const gw = 440, ghMin = 220
+  const gw = 440
+  const padding = 20
 
   for(const [ssid, rows] of bySSID){
     const groupId = `g_${ssid}`
-    const ap = rows.filter(r => (r[modeKey]||'').toUpperCase()==='AP')
-    const sta = rows.filter(r => (r[modeKey]||'').toUpperCase()!=='AP')
+    const apRows = rows.filter(r => (r[modeKey]||'').toUpperCase()==='AP')
+    const staRows = rows.filter(r => (r[modeKey]||'').toUpperCase()!=='AP')
 
-    const gNode = { id: groupId, type:'group', label: ssid||'Unknown', x: gx, y: gy, w: gw, h: ghMin }
+    const gNode = { id: groupId, type:'group', label: ssid||'Unknown', x: gx, y: gy, w: gw, h: 220 }
     groups.push(gNode)
 
-    const apStartX = gx+20, apStartY = gy+30
-    const staStartX = gx+20, staStartY = gy+110
-    const colW = 200
+    const cx = gx + gw/2
 
-    const apNodes = []
-    const staNodes = []
+    // Build nodes and compute dynamic heights
+    const apNodes = apRows.map((r,i)=>{
+      const n = {id:`n_${ssid}_${i}_ap`, kind:'AP', label: r[nameKey]||'AP', ip: r['IP Address']||'', x:0, y:0, w:180, h:40, meta:r}
+      const l = buildNodeLines(n).length
+      n.h = Math.max(40, 20 + l*14)
+      return n
+    })
+    const staNodes = staRows.map((r,i)=>{
+      const n = {id:`n_${ssid}_${i}_sta`, kind:'STA', label: r[nameKey]||'STA', ip: r['IP Address']||'', x:0, y:0, w:180, h:40, meta:r}
+      const l = buildNodeLines(n).length
+      n.h = Math.max(40, 20 + l*14)
+      return n
+    })
 
-    // Place APs row-by-row with dynamic heights
-    let apY = apStartY
-    for(let i=0;i<ap.length;i+=2){
-      const r0 = ap[i]
-      const n0 = {id:`n_${ssid}_${i}_ap`, kind:'AP', label: r0[nameKey]||'AP', ip: r0['IP Address']||'', x: apStartX, y: apY, w: 180, h: 40, meta: r0}
-      let h0Lines = buildNodeLines(n0).length
-      n0.h = Math.max(40, 20 + h0Lines*14)
-      apNodes.push(n0); nodes.push(n0)
-      let rowH = n0.h
-      if(i+1<ap.length){
-        const r1 = ap[i+1]
-        const n1 = {id:`n_${ssid}_${i+1}_ap`, kind:'AP', label: r1[nameKey]||'AP', ip: r1['IP Address']||'', x: apStartX+colW, y: apY, w: 180, h: 40, meta: r1}
-        let h1Lines = buildNodeLines(n1).length
-        n1.h = Math.max(40, 20 + h1Lines*14)
-        apNodes.push(n1); nodes.push(n1)
-        rowH = Math.max(rowH, n1.h)
-      }
-      apY += rowH + 10
-    }
+    const maxAPH = apNodes.length ? Math.max(...apNodes.map(n=>n.h)) : 0
+    const maxSTAH = staNodes.length ? Math.max(...staNodes.map(n=>n.h)) : 0
 
-    // Place STAs row-by-row with dynamic heights
-    let staY = staStartY
-    for(let i=0;i<sta.length;i+=2){
-      const r0 = sta[i]
-      const n0 = {id:`n_${ssid}_${i}_sta`, kind:'STA', label: r0[nameKey]||'STA', ip: r0['IP Address']||'', x: staStartX, y: staY, w: 180, h: 40, meta: r0}
-      let h0Lines = buildNodeLines(n0).length
-      n0.h = Math.max(40, 20 + h0Lines*14)
-      staNodes.push(n0); nodes.push(n0)
-      let rowH = n0.h
-      if(i+1<sta.length){
-        const r1 = sta[i+1]
-        const n1 = {id:`n_${ssid}_${i+1}_sta`, kind:'STA', label: r1[nameKey]||'STA', ip: r1['IP Address']||'', x: staStartX+colW, y: staY, w: 180, h: 40, meta: r1}
-        let h1Lines = buildNodeLines(n1).length
-        n1.h = Math.max(40, 20 + h1Lines*14)
-        staNodes.push(n1); nodes.push(n1)
-        rowH = Math.max(rowH, n1.h)
-      }
-      staY += rowH + 10
-    }
+    // Ring radius that fits within group width
+    const halfW = gw/2
+    const ringWanted = Math.max(120, maxAPH/2 + 60)
+    const ringMaxByWidth = Math.max(40, halfW - padding - 90) // 90 = w/2
+    const ringR = Math.min(ringWanted, ringMaxByWidth)
 
-    // Edges: connect every STA to the first AP (if exists) using centers
-    if(apNodes.length){
-      const ap0 = apNodes[0]
-      const apC = {x: ap0.x + ap0.w/2, y: ap0.y + ap0.h/2}
-      staNodes.forEach(sn=>{
-        edges.push({from: apC, to: {x: sn.x + sn.w/2, y: sn.y + sn.h/2}, cls:'ap-link'})
+    // Compute group height to contain AP(s) and STA ring
+    const halfHeightNeeded = Math.max(maxAPH/2, ringR + maxSTAH/2) + padding
+    gNode.h = Math.max(220, 2*halfHeightNeeded)
+    const cy = gy + gNode.h/2
+
+    // Place AP(s) centered at (cx, cy)
+    if(apNodes.length === 1){
+      const n = apNodes[0]
+      n.x = cx - n.w/2
+      n.y = cy - n.h/2
+    } else if(apNodes.length > 1){
+      const gap = 20
+      const totalW = apNodes.length*180 + (apNodes.length-1)*gap
+      let startX = cx - totalW/2
+      apNodes.forEach(n=>{
+        n.x = startX
+        n.y = cy - n.h/2
+        startX += n.w + gap
       })
     }
+    apNodes.forEach(n=> nodes.push(n))
 
-    // Adjust group height to fit content
-    const gBottom = Math.max(apNodes.reduce((m,n)=>Math.max(m,n.y+n.h), gy+0), staNodes.reduce((m,n)=>Math.max(m,n.y+n.h), gy+0))
-    gNode.h = Math.max(ghMin, gBottom - gy + 20)
+    // Place STAs evenly around a circle centered at (cx, cy)
+    const nSta = staNodes.length
+    if(nSta>0){
+      const startAngle = -Math.PI/2
+      for(let i=0;i<nSta;i++){
+        const n = staNodes[i]
+        const theta = startAngle + (2*Math.PI*i)/nSta
+        const centerX = cx + ringR * Math.cos(theta)
+        const centerY = cy + ringR * Math.sin(theta)
+        n.x = centerX - n.w/2
+        n.y = centerY - n.h/2
+      }
+      staNodes.forEach(n=> nodes.push(n))
+    }
 
-    if(orient==='LR') gx += gw + 40; else gy += gNode.h + 40
+    // Edges: connect each STA to nearest AP (or group center if none)
+    const apCenters = (apNodes.length? apNodes : [{x:cx - 90, y:cy - 20, w:180, h:40}]).map(n=>({x:n.x+n.w/2,y:n.y+n.h/2}))
+    staNodes.forEach(sn=>{
+      const sC = {x: sn.x + sn.w/2, y: sn.y + sn.h/2}
+      let best = apCenters[0], bestD = Infinity
+      for(const ac of apCenters){
+        const d = Math.hypot(ac.x - sC.x, ac.y - sC.y)
+        if(d<bestD){ bestD=d; best=ac }
+      }
+      edges.push({from: best, to: sC, cls:'ap-link'})
+    })
+
+    if(orient==='LR') gx += gNode.w + 40; else gy += gNode.h + 40
   }
   return {groups,nodes,edges}
 }
