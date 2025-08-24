@@ -117,7 +117,16 @@ export function buildDrawioXML(layout){
     const style = n.kind==='AP'
       ? 'shape=rectangle;rounded=1;whiteSpace=wrap;html=1;fillColor=#134e4a;strokeColor=#2dd4bf;fontColor=#e2e8f0;'
       : 'shape=rectangle;rounded=1;whiteSpace=wrap;html=1;fillColor=#1e293b;strokeColor=#334155;fontColor=#e2e8f0;'
-    const label = n.ip?`${n.label}\\n${n.ip}`:n.label
+    const m = n.meta || {}
+    const parts = []
+    if(m['Device Name'] || n.label) parts.push(`Device Name: ${m['Device Name'] || n.label}`)
+    if(m['MAC Address']) parts.push(`MAC Address: ${m['MAC Address']}`)
+    if(m['Mode'] || n.kind) parts.push(`Mode: ${m['Mode'] || n.kind}`)
+    if(m['SSID']) parts.push(`SSID: ${m['SSID']}`)
+    if(m['Product']) parts.push(`Product: ${m['Product']}`)
+    if(m['Firmware']) parts.push(`Firmware: ${m['Firmware']}`)
+    if(m['IP Address'] || n.ip) parts.push(`IP Address: ${m['IP Address'] || n.ip}`)
+    const label = parts.join('\n')
     const cid = addVertex(n.x, n.y, n.w, n.h, label, style)
     nodeCells.push({id:cid, center:{x:n.x+n.w/2, y:n.y+n.h/2}})
   }

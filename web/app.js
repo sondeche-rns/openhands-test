@@ -32,6 +32,19 @@ function zoomBy(factor){
   const rect = svg.getBoundingClientRect()
   zoomAt(rect.left + rect.width/2, rect.top + rect.height/2, factor)
 }
+function buildNodeLines(n){
+  const m = n.meta || {}
+  const lines = []
+  if(m['Device Name'] || n.label) lines.push(`Device Name: ${m['Device Name'] || n.label}`)
+  if(m['MAC Address']) lines.push(`MAC Address: ${m['MAC Address']}`)
+  if(m['Mode'] || n.kind) lines.push(`Mode: ${m['Mode'] || n.kind}`)
+  if(m['SSID']) lines.push(`SSID: ${m['SSID']}`)
+  if(m['Product']) lines.push(`Product: ${m['Product']}`)
+  if(m['Firmware']) lines.push(`Firmware: ${m['Firmware']}`)
+  if(m['IP Address'] || n.ip) lines.push(`IP Address: ${m['IP Address'] || n.ip}`)
+  return lines
+}
+
 let isPanning=false, panStartX=0, panStartY=0, vbStartX=0, vbStartY=0
 svg.addEventListener('mousedown', (e)=>{
   if(e.button!==0) return
@@ -76,7 +89,7 @@ function textNode(x, y, lines, cls=''){
   t.setAttribute('x', x+10)
   t.setAttribute('y', y+18)
   t.setAttribute('class', cls)
-  lines.slice(0,6).forEach((ln,i)=>{
+  lines.forEach((ln,i)=>{
     const tsp = document.createElementNS('http://www.w3.org/2000/svg','tspan')
     tsp.setAttribute('x', x+10)
     tsp.setAttribute('dy', i===0?0:14)
@@ -208,46 +221,77 @@ function computeLayout(records){
   const nodes = []
   const edges = []
   let gx = 40, gy = 40
-  const gw = 440, gh = 220
+  const gw = 440, ghMin = 220
 
   for(const [ssid, rows] of bySSID){
     const groupId = `g_${ssid}`
     const ap = rows.filter(r => (r[modeKey]||'').toUpperCase()==='AP')
     const sta = rows.filter(r => (r[modeKey]||'').toUpperCase()!=='AP')
 
-    // group frame
-    const gNode = { id: groupId, type:'group', label: ssid||'Unknown', x: gx, y: gy, w: gw, h: gh }
+    const gNode = { id: groupId, type:'group', label: ssid||'Unknown', x: gx, y: gy, w: gw, h: ghMin }
     groups.push(gNode)
 
-    // layout APs at top/left, STAs below/right
     const apStartX = gx+20, apStartY = gy+30
     const staStartX = gx+20, staStartY = gy+110
-    const colW = 200, rowH = 60
+    const colW = 200
 
-    ap.forEach((r,i)=>{
-      const x = apStartX + (i%2)*colW
-      const y = apStartY + Math.floor(i/2)*rowH
-      const id = `n_${ssid}_${i}_ap`
-      nodes.push({id, kind:'AP', label: r[nameKey]||'AP', ip: r['IP Address']||'', x, y, w: 180, h: 40})
-    })
-    sta.forEach((r,i)=>{
-      const x = staStartX + (i%2)*colW
-      const y = staStartY + Math.floor(i/2)*rowH
-      const id = `n_${ssid}_${i}_sta`
-      nodes.push({id, kind:'STA', label: r[nameKey]||'STA', ip: r['IP Address']||'', x, y, w: 180, h: 40})
-    })
+    const apNodes = []
+    const staNodes = []
 
-    // Link each STA to first AP in ssid if exists
-    if(ap.length){
-      const apX = apStartX+90, apY = apStartY+20
-      sta.forEach((r,i)=>{
-        const sx = staStartX + (i%2)*colW + 90
-        const sy = staStartY + Math.floor(i/2)*rowH + 20
-        edges.push({from:{x:apX,y:apY}, to:{x:sx,y:sy}, cls:'ap-link'})
+    // Place APs row-by-row with dynamic heights
+    let apY = apStartY
+    for(let i=0;i<ap.length;i+=2){
+      const r0 = ap[i]
+      const n0 = {id:`n_${ssid}_${i}_ap`, kind:'AP', label: r0[nameKey]||'AP', ip: r0['IP Address']||'', x: apStartX, y: apY, w: 180, h: 40, meta: r0}
+      let h0Lines = buildNodeLines(n0).length
+      n0.h = Math.max(40, 20 + h0Lines*14)
+      apNodes.push(n0); nodes.push(n0)
+      let rowH = n0.h
+      if(i+1<ap.length){
+        const r1 = ap[i+1]
+        const n1 = {id:`n_${ssid}_${i+1}_ap`, kind:'AP', label: r1[nameKey]||'AP', ip: r1['IP Address']||'', x: apStartX+colW, y: apY, w: 180, h: 40, meta: r1}
+        let h1Lines = buildNodeLines(n1).length
+        n1.h = Math.max(40, 20 + h1Lines*14)
+        apNodes.push(n1); nodes.push(n1)
+        rowH = Math.max(rowH, n1.h)
+      }
+      apY += rowH + 10
+    }
+
+    // Place STAs row-by-row with dynamic heights
+    let staY = staStartY
+    for(let i=0;i<sta.length;i+=2){
+      const r0 = sta[i]
+      const n0 = {id:`n_${ssid}_${i}_sta`, kind:'STA', label: r0[nameKey]||'STA', ip: r0['IP Address']||'', x: staStartX, y: staY, w: 180, h: 40, meta: r0}
+      let h0Lines = buildNodeLines(n0).length
+      n0.h = Math.max(40, 20 + h0Lines*14)
+      staNodes.push(n0); nodes.push(n0)
+      let rowH = n0.h
+      if(i+1<sta.length){
+        const r1 = sta[i+1]
+        const n1 = {id:`n_${ssid}_${i+1}_sta`, kind:'STA', label: r1[nameKey]||'STA', ip: r1['IP Address']||'', x: staStartX+colW, y: staY, w: 180, h: 40, meta: r1}
+        let h1Lines = buildNodeLines(n1).length
+        n1.h = Math.max(40, 20 + h1Lines*14)
+        staNodes.push(n1); nodes.push(n1)
+        rowH = Math.max(rowH, n1.h)
+      }
+      staY += rowH + 10
+    }
+
+    // Edges: connect every STA to the first AP (if exists) using centers
+    if(apNodes.length){
+      const ap0 = apNodes[0]
+      const apC = {x: ap0.x + ap0.w/2, y: ap0.y + ap0.h/2}
+      staNodes.forEach(sn=>{
+        edges.push({from: apC, to: {x: sn.x + sn.w/2, y: sn.y + sn.h/2}, cls:'ap-link'})
       })
     }
 
-    if(orient==='LR') gx += gw + 40; else gy += gh + 40
+    // Adjust group height to fit content
+    const gBottom = Math.max(apNodes.reduce((m,n)=>Math.max(m,n.y+n.h), gy+0), staNodes.reduce((m,n)=>Math.max(m,n.y+n.h), gy+0))
+    gNode.h = Math.max(ghMin, gBottom - gy + 20)
+
+    if(orient==='LR') gx += gw + 40; else gy += gNode.h + 40
   }
   return {groups,nodes,edges}
 }
@@ -273,8 +317,8 @@ function renderSVG(layout){
   for(const n of layout.nodes){
     const cls = n.kind==='AP'?'ap':''
     svg.appendChild(rectNode(n.x, n.y, n.w, n.h, cls))
-    const label = n.ip ? `${n.label} \n ${n.ip}` : n.label
-    svg.appendChild(textNode(n.x+6, n.y+8, label.split(/\n/)))
+    const lines = buildNodeLines(n)
+    svg.appendChild(textNode(n.x+6, n.y+8, lines))
     maxX = Math.max(maxX, n.x+n.w)
     maxY = Math.max(maxY, n.y+n.h)
   }
