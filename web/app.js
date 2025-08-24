@@ -70,7 +70,7 @@ function parseCSV(text){
     }
     cols.push(cur)
     const obj = {}
-    header.forEach((h,i)=> obj[h]= (cols[i]||'').replace(/^\"|\"$/g,'') )
+    header.forEach((h,i)=> obj[h]= (cols[i]||'').replace(/^"|"$/g,'') )
     return obj
   })
 }
