@@ -1,5 +1,5 @@
-// Enhanced WISP Mapping App with Interactive Viewer
-// Replace your existing web/app.js with this version
+// Fixed WISP Mapping App with Interactive Viewer
+// Replace your existing web/app.js with this corrected version
 
 const el = (sel) => document.querySelector(sel)
 const fileInput = el('#file')
@@ -15,7 +15,7 @@ const opt = {
   group: el('#opt-group'),
 }
 
-// Interactive Viewer Class
+// Interactive Viewer Class - Fixed Version
 class InteractiveViewer {
   constructor(svgElement) {
     this.svg = svgElement
@@ -24,8 +24,6 @@ class InteractiveViewer {
     this.isPanning = false
     this.lastPanPoint = { x: 0, y: 0 }
     this.selectedElements = new Set()
-    this.isDragging = false
-    this.dragOffset = { x: 0, y: 0 }
     
     this.setupInteractions()
     this.createControls()
@@ -41,7 +39,7 @@ class InteractiveViewer {
       
       const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1
       this.zoomAt(mouseX, mouseY, scaleFactor)
-    })
+    }, { passive: false })
 
     // Pan functionality
     this.svg.addEventListener('mousedown', (e) => {
@@ -49,10 +47,11 @@ class InteractiveViewer {
         this.isPanning = true
         this.lastPanPoint = { x: e.clientX, y: e.clientY }
         this.svg.style.cursor = 'grabbing'
+        e.preventDefault()
       }
     })
 
-    this.svg.addEventListener('mousemove', (e) => {
+    document.addEventListener('mousemove', (e) => {
       if (this.isPanning) {
         const dx = e.clientX - this.lastPanPoint.x
         const dy = e.clientY - this.lastPanPoint.y
@@ -65,14 +64,11 @@ class InteractiveViewer {
       }
     })
 
-    this.svg.addEventListener('mouseup', () => {
-      this.isPanning = false
-      this.svg.style.cursor = 'grab'
-    })
-
-    this.svg.addEventListener('mouseleave', () => {
-      this.isPanning = false
-      this.svg.style.cursor = 'grab'
+    document.addEventListener('mouseup', () => {
+      if (this.isPanning) {
+        this.isPanning = false
+        this.svg.style.cursor = 'grab'
+      }
     })
 
     // Node selection
@@ -129,40 +125,43 @@ class InteractiveViewer {
     document.getElementById('fit-screen').addEventListener('click', () => this.fitToContent())
     document.getElementById('zoom-reset').addEventListener('click', () => this.resetZoom())
 
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
-      
-      switch(e.key) {
-        case '+':
-        case '=':
-          if (e.ctrlKey || e.metaKey) {
+    // Keyboard shortcuts - only add once
+    if (!document._keyboardListenerAdded) {
+      document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
+        
+        switch(e.key) {
+          case '+':
+          case '=':
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault()
+              this.zoom(1.2)
+            }
+            break
+          case '-':
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault()
+              this.zoom(0.8)
+            }
+            break
+          case 'f':
+          case 'F':
             e.preventDefault()
-            this.zoom(1.2)
-          }
-          break
-        case '-':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault()
-            this.zoom(0.8)
-          }
-          break
-        case 'f':
-        case 'F':
-          e.preventDefault()
-          this.fitToContent()
-          break
-        case 'Escape':
-          this.clearSelection()
-          break
-        case 'a':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault()
-            this.selectAll()
-          }
-          break
-      }
-    })
+            this.fitToContent()
+            break
+          case 'Escape':
+            this.clearSelection()
+            break
+          case 'a':
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault()
+              this.selectAll()
+            }
+            break
+        }
+      })
+      document._keyboardListenerAdded = true
+    }
   }
 
   zoomAt(mouseX, mouseY, scaleFactor) {
@@ -236,12 +235,18 @@ class InteractiveViewer {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     
     elements.forEach(el => {
-      const bbox = el.getBBox()
-      minX = Math.min(minX, bbox.x)
-      minY = Math.min(minY, bbox.y)
-      maxX = Math.max(maxX, bbox.x + bbox.width)
-      maxY = Math.max(maxY, bbox.y + bbox.height)
+      try {
+        const bbox = el.getBBox()
+        minX = Math.min(minX, bbox.x)
+        minY = Math.min(minY, bbox.y)
+        maxX = Math.max(maxX, bbox.x + bbox.width)
+        maxY = Math.max(maxY, bbox.y + bbox.height)
+      } catch (e) {
+        // Ignore elements that can't be measured
+      }
     })
+    
+    if (minX === Infinity) return null
     
     return {
       x: minX,
@@ -414,7 +419,7 @@ function computeLayout(records) {
   const modeKey = opt.modeCol.value || 'Mode'
   const nameKey = opt.nameCol.value || 'Device Name'
   const ssidKey = opt.ssidCol.value || 'SSID'
-  const orient = opt.orient.value
+  const orient = opt.orient.value || 'LR'
   const bySSID = groupBy(records, ssidKey)
 
   const groups = []
@@ -424,7 +429,7 @@ function computeLayout(records) {
   const gw = 440, gh = 220
 
   for (const [ssid, rows] of bySSID) {
-    const groupId = `g_${ssid}`
+    const groupId = `g_${ssid.replace(/[^a-zA-Z0-9]/g, '_')}`
     const ap = rows.filter(r => (r[modeKey] || '').toUpperCase() === 'AP')
     const sta = rows.filter(r => (r[modeKey] || '').toUpperCase() !== 'AP')
 
@@ -438,13 +443,13 @@ function computeLayout(records) {
     ap.forEach((r, i) => {
       const x = apStartX + (i % 2) * colW
       const y = apStartY + Math.floor(i / 2) * rowH
-      const id = `n_${ssid}_${i}_ap`
+      const id = `n_${groupId}_${i}_ap`
       nodes.push({ id, kind: 'AP', label: r[nameKey] || 'AP', ip: r['IP Address'] || '', x, y, w: 180, h: 40 })
     })
     sta.forEach((r, i) => {
       const x = staStartX + (i % 2) * colW
       const y = staStartY + Math.floor(i / 2) * rowH
-      const id = `n_${ssid}_${i}_sta`
+      const id = `n_${groupId}_${i}_sta`
       nodes.push({ id, kind: 'STA', label: r[nameKey] || 'STA', ip: r['IP Address'] || '', x, y, w: 180, h: 40 })
     })
 
@@ -466,7 +471,7 @@ function computeLayout(records) {
 function renderSVG(layout) {
   svg.innerHTML = ''
   
-  // Create arrow marker
+  // Create arrow marker first
   createArrowMarker()
   
   const pad = 40
@@ -537,7 +542,11 @@ function renderSVG(layout) {
   svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`)
 
   // Initialize interactive viewer
-  if (!svg._interactiveViewer) {
+  if (svg._interactiveViewer) {
+    // Update existing viewer
+    svg._interactiveViewer.updateViewBox()
+  } else {
+    // Create new viewer
     svg._interactiveViewer = new InteractiveViewer(svg)
   }
 }
@@ -546,7 +555,7 @@ function createArrowMarker() {
   let defs = svg.querySelector('defs')
   if (!defs) {
     defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
-    svg.appendChild(defs)
+    svg.insertBefore(defs, svg.firstChild)
   }
   
   if (svg.querySelector('#arrowhead')) return
@@ -640,21 +649,27 @@ let currentRecords = []
 async function handleFile(file) {
   const reader = new FileReader()
   reader.onload = () => {
-    const text = reader.result
-    let rows = []
-    const type = detectType(file)
-    if (type === 'csv') rows = parseCSV(text)
-    else if (type === 'xml') rows = parseXML(text)
-    else rows = parseHTML(text)
-    currentRecords = rows
-    infoPre.textContent = JSON.stringify(rows.slice(0, 20), null, 2)
-    statusChip.textContent = `${file.name} · ${rows.length} records`
-    const layout = computeLayout(rows)
-    renderSVG(layout)
+    try {
+      const text = reader.result
+      let rows = []
+      const type = detectType(file)
+      if (type === 'csv') rows = parseCSV(text)
+      else if (type === 'xml') rows = parseXML(text)
+      else rows = parseHTML(text)
+      currentRecords = rows
+      infoPre.textContent = JSON.stringify(rows.slice(0, 20), null, 2)
+      statusChip.textContent = `${file.name} · ${rows.length} records`
+      const layout = computeLayout(rows)
+      renderSVG(layout)
+    } catch (error) {
+      console.error('Error processing file:', error)
+      statusChip.textContent = 'Error processing file'
+    }
   }
   reader.readAsText(file)
 }
 
+// Event listeners
 fileInput.addEventListener('change', (e) => {
   const f = e.target.files?.[0]
   if (f) handleFile(f)
@@ -677,6 +692,9 @@ el('#btn-clear').addEventListener('click', () => {
   infoPre.textContent = ''
   statusChip.textContent = 'No file loaded'
   fileInput.value = ''
+  // Clear controls
+  const controls = document.querySelector('.viewer-controls')
+  if (controls) controls.remove()
 })
 
 el('#btn-export').addEventListener('click', () => {
@@ -686,22 +704,29 @@ el('#btn-export').addEventListener('click', () => {
 })
 
 el('#btn-load-sample').addEventListener('click', async () => {
-  const res = await fetch('/mwakazi_net_bst1.csv')
-  const txt = await res.text()
-  const rows = parseCSV(txt)
-  currentRecords = rows
-  infoPre.textContent = JSON.stringify(rows.slice(0, 20), null, 2)
-  statusChip.textContent = `Sample CSV · ${rows.length} records`
-  const layout = computeLayout(rows)
-  renderSVG(layout)
+  try {
+    const res = await fetch('/mwakazi_net_bst1.csv')
+    const txt = await res.text()
+    const rows = parseCSV(txt)
+    currentRecords = rows
+    infoPre.textContent = JSON.stringify(rows.slice(0, 20), null, 2)
+    statusChip.textContent = `Sample CSV · ${rows.length} records`
+    const layout = computeLayout(rows)
+    renderSVG(layout)
+  } catch (error) {
+    console.error('Error loading sample:', error)
+    statusChip.textContent = 'Error loading sample'
+  }
 })
 
 // Options change handlers
 Object.values(opt).forEach(input => {
-  input.addEventListener('change', () => {
-    if (currentRecords.length) {
-      const layout = computeLayout(currentRecords)
-      renderSVG(layout)
-    }
-  })
+  if (input) {
+    input.addEventListener('change', () => {
+      if (currentRecords.length) {
+        const layout = computeLayout(currentRecords)
+        renderSVG(layout)
+      }
+    })
+  }
 })
