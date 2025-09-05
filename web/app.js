@@ -1,5 +1,5 @@
-// Fixed WISP Mapping App with Interactive Viewer
-// Replace your existing web/app.js with this corrected version
+// Enhanced WISP Mapping App with Clickable Metadata Display
+// Replace your existing web/app.js with this version
 
 const el = (sel) => document.querySelector(sel)
 const fileInput = el('#file')
@@ -15,7 +15,183 @@ const opt = {
   group: el('#opt-group'),
 }
 
-// Interactive Viewer Class - Fixed Version
+// Global variables for metadata
+let currentRecords = []
+let deviceDataMap = new Map() // Map device IDs to their full data
+
+// Metadata Panel Management
+class MetadataManager {
+  constructor() {
+    this.panel = el('#metadata-panel')
+    this.modal = el('#metadata-modal')
+    this.isDesktop = window.innerWidth > 1200
+    
+    this.setupEventListeners()
+    this.handleResize()
+  }
+  
+  setupEventListeners() {
+    // Close panel button
+    el('#close-metadata')?.addEventListener('click', () => this.hideMetadata())
+    
+    // Close modal button
+    el('#close-modal-metadata')?.addEventListener('click', () => this.hideMetadata())
+    
+    // Close modal on backdrop click
+    this.modal?.addEventListener('click', (e) => {
+      if (e.target === this.modal) this.hideMetadata()
+    })
+    
+    // Handle escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.hideMetadata()
+    })
+    
+    // Handle window resize
+    window.addEventListener('resize', () => this.handleResize())
+  }
+  
+  handleResize() {
+    this.isDesktop = window.innerWidth > 1200
+    if (!this.isDesktop) {
+      this.hideMetadata()
+    }
+  }
+  
+  showMetadata(deviceData) {
+    const content = this.generateMetadataContent(deviceData)
+    
+    if (this.isDesktop && this.panel) {
+      // Desktop: Show side panel
+      el('#metadata-title').textContent = deviceData.label || 'Device Information'
+      el('#metadata-content').innerHTML = content
+      this.panel.classList.remove('hidden')
+      el('.layout').classList.remove('metadata-hidden')
+    } else if (this.modal) {
+      // Mobile: Show modal
+      el('#modal-metadata-title').textContent = deviceData.label || 'Device Information'
+      el('#modal-metadata-content').innerHTML = content
+      this.modal.classList.add('active')
+      document.body.style.overflow = 'hidden'
+    }
+  }
+  
+  hideMetadata() {
+    if (this.panel) {
+      this.panel.classList.add('hidden')
+      el('.layout').classList.add('metadata-hidden')
+    }
+    if (this.modal) {
+      this.modal.classList.remove('active')
+      document.body.style.overflow = ''
+    }
+  }
+  
+  generateMetadataContent(deviceData) {
+    const data = deviceData.originalData || {}
+    const isAP = deviceData.kind === 'AP'
+    
+    // Device header
+    let html = `
+      <div class="device-info">
+        <div class="device-header">
+          <div class="device-icon ${isAP ? 'ap' : 'sta'}">
+            <span class="material-symbols-outlined">
+              ${isAP ? 'router' : 'devices'}
+            </span>
+          </div>
+          <div class="device-header-info">
+            <h4>${deviceData.label || 'Unknown Device'}</h4>
+            <span class="device-type ${isAP ? 'ap' : 'sta'}">
+              <span class="material-symbols-outlined">${isAP ? 'wifi_tethering' : 'wifi'}</span>
+              ${isAP ? 'Access Point' : 'Station'}
+            </span>
+          </div>
+        </div>
+        
+        <div class="metadata-fields">
+    `
+    
+    // Core network information
+    const coreFields = [
+      { key: 'IP Address', label: 'IP Address', type: 'ip' },
+      { key: 'MAC Address', label: 'MAC Address', type: 'mac' },
+      { key: 'SSID', label: 'Network (SSID)', type: 'text' },
+      { key: 'Mode', label: 'Operating Mode', type: 'text' },
+      { key: 'Product', label: 'Product Model', type: 'text' },
+      { key: 'Firmware', label: 'Firmware Version', type: 'text' }
+    ]
+    
+    coreFields.forEach(field => {
+      const value = data[field.key]
+      if (value !== undefined) {
+        html += this.generateFieldHTML(field.label, value, field.type)
+      }
+    })
+    
+    // Additional fields (anything not in core fields)
+    const additionalFields = Object.keys(data).filter(key => 
+      !coreFields.some(cf => cf.key === key) && 
+      key !== 'Device Name' && 
+      data[key] !== undefined && 
+      data[key] !== ''
+    )
+    
+    if (additionalFields.length > 0) {
+      additionalFields.forEach(key => {
+        html += this.generateFieldHTML(
+          this.formatFieldName(key), 
+          data[key], 
+          'text'
+        )
+      })
+    }
+    
+    html += `
+        </div>
+        
+        <div class="network-stats">
+          <div class="stat-item">
+            <div class="stat-value">${deviceData.kind}</div>
+            <div class="stat-label">Device Type</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value">${data.SSID || 'Unknown'}</div>
+            <div class="stat-label">Network</div>
+          </div>
+        </div>
+      </div>
+    `
+    
+    return html
+  }
+  
+  generateFieldHTML(label, value, type = 'text') {
+    const isEmpty = !value || value === '' || value === 'undefined'
+    const displayValue = isEmpty ? 'Not specified' : value
+    
+    return `
+      <div class="metadata-field">
+        <div class="metadata-field-label">${label}</div>
+        <div class="metadata-field-value ${isEmpty ? 'empty' : type}">
+          ${displayValue}
+        </div>
+      </div>
+    `
+  }
+  
+  formatFieldName(key) {
+    return key
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .trim()
+  }
+}
+
+// Initialize metadata manager
+const metadataManager = new MetadataManager()
+
+// Interactive Viewer Class - Enhanced with metadata
 class InteractiveViewer {
   constructor(svgElement) {
     this.svg = svgElement
@@ -71,10 +247,26 @@ class InteractiveViewer {
       }
     })
 
-    // Node selection
+    // Enhanced node selection with metadata display
     this.svg.addEventListener('click', (e) => {
       const nodeGroup = e.target.closest('.node-group')
       if (nodeGroup) {
+        // Handle device node clicks
+        if (nodeGroup.classList.contains('device-node')) {
+          const deviceId = nodeGroup.getAttribute('data-id')
+          const deviceData = deviceDataMap.get(deviceId)
+          
+          if (deviceData) {
+            // Visual feedback
+            nodeGroup.classList.add('clicked')
+            setTimeout(() => nodeGroup.classList.remove('clicked'), 300)
+            
+            // Show metadata
+            metadataManager.showMetadata(deviceData)
+          }
+        }
+        
+        // Selection handling
         if (!e.ctrlKey && !e.metaKey) {
           this.clearSelection()
         }
@@ -87,7 +279,10 @@ class InteractiveViewer {
     // Double-click to fit
     this.svg.addEventListener('dblclick', (e) => {
       e.preventDefault()
-      this.fitToContent()
+      // Don't fit if double-clicking on a device
+      if (!e.target.closest('.device-node')) {
+        this.fitToContent()
+      }
     })
   }
 
@@ -146,11 +341,14 @@ class InteractiveViewer {
             break
           case 'f':
           case 'F':
-            e.preventDefault()
-            this.fitToContent()
+            if (!e.ctrlKey && !e.metaKey) {
+              e.preventDefault()
+              this.fitToContent()
+            }
             break
           case 'Escape':
             this.clearSelection()
+            metadataManager.hideMetadata()
             break
           case 'a':
             if (e.ctrlKey || e.metaKey) {
@@ -428,6 +626,9 @@ function computeLayout(records) {
   let gx = 40, gy = 40
   const gw = 440, gh = 220
 
+  // Clear device data map
+  deviceDataMap.clear()
+
   for (const [ssid, rows] of bySSID) {
     const groupId = `g_${ssid.replace(/[^a-zA-Z0-9]/g, '_')}`
     const ap = rows.filter(r => (r[modeKey] || '').toUpperCase() === 'AP')
@@ -444,13 +645,32 @@ function computeLayout(records) {
       const x = apStartX + (i % 2) * colW
       const y = apStartY + Math.floor(i / 2) * rowH
       const id = `n_${groupId}_${i}_ap`
-      nodes.push({ id, kind: 'AP', label: r[nameKey] || 'AP', ip: r['IP Address'] || '', x, y, w: 180, h: 40 })
+      const nodeData = { 
+        id, 
+        kind: 'AP', 
+        label: r[nameKey] || 'AP', 
+        ip: r['IP Address'] || '', 
+        x, y, w: 180, h: 40,
+        originalData: r // Store complete original data
+      }
+      nodes.push(nodeData)
+      deviceDataMap.set(id, nodeData) // Store in map for quick lookup
     })
+    
     sta.forEach((r, i) => {
       const x = staStartX + (i % 2) * colW
       const y = staStartY + Math.floor(i / 2) * rowH
       const id = `n_${groupId}_${i}_sta`
-      nodes.push({ id, kind: 'STA', label: r[nameKey] || 'STA', ip: r['IP Address'] || '', x, y, w: 180, h: 40 })
+      const nodeData = { 
+        id, 
+        kind: 'STA', 
+        label: r[nameKey] || 'STA', 
+        ip: r['IP Address'] || '', 
+        x, y, w: 180, h: 40,
+        originalData: r // Store complete original data
+      }
+      nodes.push(nodeData)
+      deviceDataMap.set(id, nodeData) // Store in map for quick lookup
     })
 
     if (ap.length) {
@@ -513,7 +733,7 @@ function renderSVG(layout) {
     edgesContainer.appendChild(edge)
   }
 
-  // Render nodes
+  // Render nodes with enhanced click handling
   for (const n of layout.nodes) {
     const nodeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     nodeGroup.setAttribute('class', 'node-group device-node')
@@ -525,8 +745,9 @@ function renderSVG(layout) {
     const label = n.ip ? `${n.label}\n${n.ip}` : n.label
     const text = textNode(n.x + 6, n.y + 8, label.split(/\n/))
     
+    // Enhanced tooltip
     const title = document.createElementNS('http://www.w3.org/2000/svg', 'title')
-    title.textContent = `${n.kind}: ${n.label}${n.ip ? ' (' + n.ip + ')' : ''}`
+    title.textContent = `${n.kind}: ${n.label}${n.ip ? ' (' + n.ip + ')' : ''} - Click for details`
     
     nodeGroup.appendChild(rect)
     nodeGroup.appendChild(text)
@@ -644,8 +865,6 @@ function download(filename, text, type) {
   URL.revokeObjectURL(url)
 }
 
-let currentRecords = []
-
 async function handleFile(file) {
   const reader = new FileReader()
   reader.onload = () => {
@@ -661,6 +880,9 @@ async function handleFile(file) {
       statusChip.textContent = `${file.name} · ${rows.length} records`
       const layout = computeLayout(rows)
       renderSVG(layout)
+      
+      // Hide metadata panel initially
+      metadataManager.hideMetadata()
     } catch (error) {
       console.error('Error processing file:', error)
       statusChip.textContent = 'Error processing file'
@@ -688,10 +910,12 @@ upload.addEventListener('drop', (e) => {
 // Buttons
 el('#btn-clear').addEventListener('click', () => {
   currentRecords = []
+  deviceDataMap.clear()
   svg.innerHTML = ''
   infoPre.textContent = ''
   statusChip.textContent = 'No file loaded'
   fileInput.value = ''
+  metadataManager.hideMetadata()
   // Clear controls
   const controls = document.querySelector('.viewer-controls')
   if (controls) controls.remove()
@@ -713,6 +937,7 @@ el('#btn-load-sample').addEventListener('click', async () => {
     statusChip.textContent = `Sample CSV · ${rows.length} records`
     const layout = computeLayout(rows)
     renderSVG(layout)
+    metadataManager.hideMetadata()
   } catch (error) {
     console.error('Error loading sample:', error)
     statusChip.textContent = 'Error loading sample'
@@ -726,6 +951,7 @@ Object.values(opt).forEach(input => {
       if (currentRecords.length) {
         const layout = computeLayout(currentRecords)
         renderSVG(layout)
+        metadataManager.hideMetadata()
       }
     })
   }
